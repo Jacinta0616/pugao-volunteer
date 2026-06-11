@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>義工資料比對系統</title>
+  <title>護法會資料比對系統</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -289,8 +289,15 @@
 
   <!-- Header -->
   <div class="header">
-    <h1>普高精舍　義工資料比對系統</h1>
-    <p>上傳去年與今年的義工資料，自動比對新增、取消、異動、重複聘任</p>
+    <h1>普高精舍　護法會資料比對系統</h1>
+    <p>上傳去年與今年的護法會資料，自動比對新增、取消、異動、重複聘任</p>
+  </div>
+
+  <!-- Template Download -->
+  <div style="text-align:center;margin-bottom:20px">
+    <span style="font-size:.85rem;color:#888;margin-right:8px">不確定格式？先下載模板：</span>
+    <button class="btn-download" onclick="downloadLastYearTemplate()" style="margin:4px 6px">⬇ 去年資料模板</button>
+    <button class="btn-download" onclick="downloadThisYearTemplate()" style="margin:4px 6px">⬇ 今年資料模板</button>
   </div>
 
   <!-- Upload -->
@@ -298,7 +305,7 @@
     <div class="upload-card" id="card-last">
       <label for="last-file">
         <div class="icon">📂</div>
-        <h3>去年義工資料</h3>
+        <h3>去年護法會資料</h3>
         <span class="hint">點擊選擇 Excel 檔案</span>
       </label>
       <input type="file" id="last-file" accept=".xlsx,.xlsm,.xls" onchange="onFileChange('last')">
@@ -307,7 +314,7 @@
     <div class="upload-card" id="card-this">
       <label for="this-file">
         <div class="icon">📂</div>
-        <h3>今年義工資料</h3>
+        <h3>今年護法會資料</h3>
         <span class="hint">點擊選擇 Excel 檔案</span>
       </label>
       <input type="file" id="this-file" accept=".xlsx,.xlsm,.xls" onchange="onFileChange('this')">
@@ -333,7 +340,7 @@
 
     <!-- Supplement -->
     <div class="card" style="margin-bottom:20px">
-      <div class="card-title" style="margin-bottom:14px">補充義工資料</div>
+      <div class="card-title" style="margin-bottom:14px">補充護法會資料</div>
       <p style="font-size:.85rem;color:#666;margin-bottom:12px">
         各組法師回傳資料後，上傳 Excel，系統自動比對並合併（不覆蓋已有資料）。<br>
         <span style="color:#7c3aed">若 Excel 有多個工作表且工作表名稱為組別名稱，系統會自動偵測所有組別，無需手動選擇。</span>
@@ -393,7 +400,7 @@
   <!-- Legend -->
   <div class="legend">
     <strong>顏色說明：</strong>
-    <div class="legend-item"><div class="legend-color" style="background:#C6EFCE"></div>新增（本組新義工）</div>
+    <div class="legend-item"><div class="legend-color" style="background:#C6EFCE"></div>新增（本組新護法會）</div>
     <div class="legend-item"><div class="legend-color" style="background:#FFC7CE"></div>取消（離開不再服務）</div>
     <div class="legend-item"><div class="legend-color" style="background:#FFEB9C"></div>異動（職稱或組別變更）</div>
     <div class="legend-item"><div class="legend-color" style="background:#FFD966"></div>重複聘任（被多個組別聘任）</div>
@@ -775,7 +782,7 @@ function generateReport(rawResults) {
   let totT = 0, totN = 0, totCa = 0, totCh = 0, totD = 0;
 
   const sumAoa = [
-    ['普高精舍 義工資料比對總覽', '', '', '', '', '', ''],
+    ['普高精舍 護法會資料比對總覽', '', '', '', '', '', ''],
     ['組別', '今年人數（不含重複聘任）', '正常', '新增', '取消', '異動', '重複聘任'],
   ];
   for (const g of gNames) {
@@ -811,7 +818,7 @@ function generateReport(rawResults) {
     const st = countStats(members, cancelled);
 
     const aoa = [
-      [`${group}　義工名單`, ...Array(9).fill('')],
+      [`${group}　護法會名單`, ...Array(9).fill('')],
       [`正常 ${st.normal} 人　　新增 ${st.new} 人　　取消 ${st.cancel} 人　　異動 ${st.change} 人　　重複聘任 ${st.dup} 人　　本年合計 ${st.total} 人（不含重複聘任）`,
        ...Array(9).fill('')],
       [...RCOLS],
@@ -867,7 +874,7 @@ function generateReport(rawResults) {
   const blob = new Blob([buf], { type: 'application/octet-stream' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
-  a.href = url; a.download = '義工比對報表.xlsx';
+  a.href = url; a.download = '護法會比對報表.xlsx';
   document.body.appendChild(a); a.click();
   document.body.removeChild(a); URL.revokeObjectURL(url);
 }
@@ -963,6 +970,132 @@ function doDownload() {
   if (!compareRawResults) return;
   try { generateReport(compareRawResults); }
   catch (e) { showError('報表產生失敗：' + e.message); console.error(e); }
+}
+
+// ── 模板下載共用 ────────────────────────────────────────────────
+function _triggerDownload(wb, filename) {
+  const buf  = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([buf], { type: 'application/octet-stream' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+function _styleHeaderRow(ws, colCount) {
+  const S = { fill: { patternType: 'solid', fgColor: { rgb: 'D9E1F2' } },
+               font: { bold: true }, alignment: { horizontal: 'center', vertical: 'center' } };
+  for (let c = 0; c < colCount; c++) {
+    const addr = XLSX.utils.encode_cell({ r: 0, c });
+    if (!ws[addr]) ws[addr] = { v: '', t: 's' };
+    ws[addr].s = S;
+  }
+}
+
+function downloadLastYearTemplate() {
+  const wb = XLSX.utils.book_new();
+
+  // ── 去年名單工作表 ──────────────────────────────────────────
+  const cols = ['學員編號', '姓名', '法名', '年齡', '行動電話', '護法會職稱'];
+  const aoa = [
+    cols,
+    ['10001', '張大明', '傳明',  '35', '0912-345-678', '音響組音響師'],
+    ['10002', '李志偉', '',       '42', '0923-456-789', '福慧出坡組清潔員'],
+    ['',      '陳淑芬', '傳慧',  '28', '0934-567-890', '香積組香積員'],
+    ['10004', '王小華', '傳正',  '50', '0945-678-901', '核心組核心委員'],
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [14, 10, 8, 6, 16, 24].map(w => ({ wch: w }));
+  _styleHeaderRow(ws, cols.length);
+  XLSX.utils.book_append_sheet(wb, ws, '去年護法會名單');
+
+  // ── 填寫說明工作表 ────────────────────────────────────────
+  const instrAoa = [
+    ['【去年護法會資料 填寫說明】', '', ''],
+    [],
+    ['欄位', '必填', '說明'],
+    ['學員編號', '否', '有填比對更準確，空白也可以'],
+    ['姓名',     '是', '護法會姓名'],
+    ['法名',     '否', '法名（沒有可空白）'],
+    ['年齡',     '否', '年齡'],
+    ['行動電話', '否', '手機號碼'],
+    ['護法會職稱', '是', '格式：「組別名稱 + 職稱」，例如「音響組音響師」、「福慧出坡組清潔員」'],
+    [],
+    ['注意事項', '', ''],
+    ['• 所有護法會放在同一張工作表，不用分組', '', ''],
+    ['• 護法會職稱欄位要帶組別名稱前綴，系統才能判斷屬於哪個組', '', ''],
+    ['• 學員編號是比對的主要唯一值；沒有編號就用姓名 + 法名比對', '', ''],
+  ];
+  const wsI = XLSX.utils.aoa_to_sheet(instrAoa);
+  wsI['!cols'] = [14, 6, 52].map(w => ({ wch: w }));
+  wsI['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 2 } },
+    { s: { r: 10, c: 0 }, e: { r: 10, c: 2 } },
+  ];
+  XLSX.utils.book_append_sheet(wb, wsI, '填寫說明');
+
+  _triggerDownload(wb, '去年護法會資料_模板.xlsx');
+}
+
+function downloadThisYearTemplate() {
+  const wb = XLSX.utils.book_new();
+
+  const cols = ['學員編號', '姓名', '法名', '年齡', '行動電話', '本組職稱'];
+  const colWidths = [14, 10, 8, 6, 16, 16].map(w => ({ wch: w }));
+
+  const sampleData = {
+    '音響組': [
+      ['10001', '張大明', '傳明',  '35', '0912-345-678', '音響師'],
+      ['10002', '李志偉', '',       '42', '0923-456-789', '音響助理'],
+    ],
+    '香積組': [
+      ['',      '陳淑芬', '傳慧',  '28', '0934-567-890', '香積員'],
+      ['10005', '王小華', '傳正',  '50', '0945-678-901', '香積長'],
+    ],
+    '交通組': [
+      ['10006', '林明達', '傳達',  '45', '0956-789-012', '司機'],
+      ['',      '黃志成', '',       '33', '0967-890-123', '接待員'],
+    ],
+  };
+
+  for (const [group, rows] of Object.entries(sampleData)) {
+    const aoa = [cols, ...rows];
+    const ws  = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = colWidths;
+    _styleHeaderRow(ws, cols.length);
+    XLSX.utils.book_append_sheet(wb, ws, group);
+  }
+
+  // ── 填寫說明工作表 ────────────────────────────────────────
+  const instrAoa = [
+    ['【今年護法會資料 填寫說明（多組版）】', '', ''],
+    [],
+    ['欄位', '必填', '說明'],
+    ['學員編號', '否', '有填比對更準確，空白也可以'],
+    ['姓名',     '是', '護法會姓名'],
+    ['法名',     '否', '法名（沒有可空白）'],
+    ['年齡',     '否', '年齡'],
+    ['行動電話', '否', '手機號碼'],
+    ['本組職稱', '是', '只填職稱，不含組別名稱（例如「音響師」，不是「音響組音響師」）'],
+    [],
+    ['工作表命名規則', '', ''],
+    ['• 每個組別一張工作表', '', ''],
+    ['• 工作表名稱必須與下方組別名稱完全一致', '', ''],
+    [],
+    ['支援的組別名稱（共 ' + KNOWN_GROUPS.length + ' 組）', '', ''],
+    ...KNOWN_GROUPS.map(g => [g, '', '']),
+  ];
+  const wsI = XLSX.utils.aoa_to_sheet(instrAoa);
+  wsI['!cols'] = [20, 6, 52].map(w => ({ wch: w }));
+  wsI['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 2 } },
+    { s: { r: 10, c: 0 }, e: { r: 10, c: 2 } },
+    { s: { r: 14, c: 0 }, e: { r: 14, c: 2 } },
+  ];
+  XLSX.utils.book_append_sheet(wb, wsI, '填寫說明');
+
+  _triggerDownload(wb, '今年護法會資料_模板.xlsx');
 }
 
 function renderResults(doScroll = true) {
@@ -1348,7 +1481,7 @@ async function doSupplement() {
         summaryParts.push(`${sh} +${added} 筆（讀入 ${incoming.length}，跳過重複 ${incoming.length - added}）`);
       }
 
-      if (summaryParts.length === 0) throw new Error('所有工作表均未找到有效義工資料');
+      if (summaryParts.length === 0) throw new Error('所有工作表均未找到有效護法會資料');
 
     } else {
       // ── 單組模式（原有邏輯）─────────────────────────────────
@@ -1375,7 +1508,7 @@ async function doSupplement() {
         };
       }).filter(Boolean);
 
-      if (incoming.length === 0) throw new Error('檔案中找不到有效義工資料（姓名與職稱不可為空）');
+      if (incoming.length === 0) throw new Error('檔案中找不到有效護法會資料（姓名與職稱不可為空）');
 
       const existing    = thisYearDict[group] ? [...thisYearDict[group]] : [];
       const existingIds = new Set(existing.map(m => m['學員編號']).filter(Boolean));
@@ -1537,7 +1670,7 @@ function showGroup(idx) {
   }
 
   document.getElementById('group-detail').innerHTML = `
-    <div class="group-title">${esc(groupName)}　義工名單</div>
+    <div class="group-title">${esc(groupName)}　護法會名單</div>
     <div class="group-stats">
       正常 ${s.normal} 人　　新增 ${s.new} 人　　取消 ${s.cancel} 人　　異動 ${s.change} 人　　重複聘任 ${s.dup} 人　　本年合計 ${s.total} 人（不含重複聘任）
     </div>
