@@ -229,6 +229,55 @@
     .legend-item  { display: flex; align-items: center; gap: 7px; font-size: .85rem; }
     .legend-color { width: 18px; height: 18px; border-radius: 4px; flex-shrink: 0; }
 
+    /* ── Supplement ── */
+    .supp-select {
+      padding: 9px 14px;
+      border: 1.5px solid #d1d5db;
+      border-radius: 7px;
+      font-size: .95rem;
+      font-family: inherit;
+      background: #fff;
+      outline: none;
+      cursor: pointer;
+      min-width: 160px;
+    }
+    .supp-select:focus { border-color: #2563eb; }
+    .btn-purple {
+      display: inline-block;
+      padding: 9px 22px;
+      background: #7c3aed; color: #fff;
+      border: none; border-radius: 7px;
+      font-size: .95rem; font-weight: 700;
+      cursor: pointer; font-family: inherit;
+      transition: background .2s;
+      white-space: nowrap;
+    }
+    .btn-purple:hover { background: #6d28d9; }
+    .missing-chip {
+      padding: 4px 12px;
+      background: #fef3c7; color: #92400e;
+      border: 1px solid #fcd34d;
+      border-radius: 20px;
+      font-size: .82rem; font-weight: 600;
+      cursor: pointer; font-family: inherit;
+      transition: background .15s;
+    }
+    .missing-chip:hover { background: #fde68a; }
+
+    /* ── Search ── */
+    .search-input {
+      width: 100%;
+      padding: 9px 14px;
+      border: 1.5px solid #d1d5db;
+      border-radius: 7px;
+      font-size: .95rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color .15s;
+    }
+    .search-input:focus { border-color: #2563eb; }
+    .search-count { font-size: .85rem; color: #666; margin-bottom: 8px; }
+
     @media (max-width: 700px) {
       .upload-section { grid-template-columns: 1fr; }
       .stats-row      { grid-template-columns: repeat(2, 1fr); }
@@ -282,6 +331,43 @@
     <!-- Stats -->
     <div class="stats-row" id="stats-row"></div>
 
+    <!-- Supplement -->
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-title" style="margin-bottom:14px">補充義工資料</div>
+      <p style="font-size:.85rem;color:#666;margin-bottom:12px">
+        各組法師回傳資料後，上傳 Excel，系統自動比對並合併（不覆蓋已有資料）。<br>
+        <span style="color:#7c3aed">若 Excel 有多個工作表且工作表名稱為組別名稱，系統會自動偵測所有組別，無需手動選擇。</span>
+      </p>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <select class="supp-select" id="supp-group">
+          <option value="">— 請選擇組別 —</option>
+        </select>
+        <label class="btn-download" style="cursor:pointer;margin:0">
+          選擇 Excel 檔案
+          <input type="file" id="supp-file" accept=".xlsx,.xlsm,.xls"
+                 style="display:none" onchange="onSuppFileChange()">
+        </label>
+        <span id="supp-filename" style="font-size:.85rem;color:#16a34a;font-weight:600"></span>
+        <button class="btn-purple" onclick="doSupplement()">確認補充</button>
+      </div>
+      <div id="supp-msg" style="margin-top:10px;font-size:.9rem;min-height:1.2em"></div>
+      <div id="missing-groups" style="margin-top:12px"></div>
+    </div>
+
+    <!-- Ambiguous (同名待確認) -->
+    <div id="ambiguous-card" class="card" style="display:none;margin-bottom:20px;border-left:4px solid #f59e0b"></div>
+
+    <!-- Global Search -->
+    <div class="card" style="margin-bottom:20px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <span style="font-weight:700;white-space:nowrap;color:#1a2340">🔍 跨組查詢</span>
+        <input type="text" class="search-input" id="global-search"
+               placeholder="輸入姓名、法名或學員編號，跨所有組別搜尋…"
+               oninput="doGlobalSearch()">
+      </div>
+      <div id="global-search-results" style="display:none;margin-top:14px"></div>
+    </div>
+
     <!-- Summary Table -->
     <div class="card">
       <div class="card-header">
@@ -314,6 +400,23 @@
   </div>
 
 </div><!-- /container -->
+
+<!-- Edit Person Modal -->
+<div id="edit-modal-overlay" class="modal-overlay" style="display:none" onclick="closeEditModal()">
+  <div class="modal-box" style="max-width:500px" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h3 id="edit-modal-title">編輯學員資料</h3>
+      <button class="modal-close" onclick="closeEditModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="edit-form-body"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid #e5e7eb">
+        <button class="btn-download" style="background:#6b7280;color:#fff" onclick="closeEditModal()">取消</button>
+        <button class="btn-purple" onclick="savePersonEdit()">儲存並重新比對</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- Status Modal -->
 <div id="modal-overlay" class="modal-overlay" style="display:none" onclick="closeModal()">
@@ -611,11 +714,13 @@ function compareVolunteers(lastYearList, thisYearDict) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function countStats(members, cancelled) {
   return {
+    total:  members.filter(m => !(m['狀態'] || '').includes('重複聘任')).length,
     new:    members.filter(m  => (m['狀態'] || '').includes('新增')).length,
     cancel: cancelled.filter(c => c['狀態'] === '取消').length,
     change: members.filter(m  => (m['狀態'] || '').includes('異動')).length
           + cancelled.filter(c => c['狀態'] === '異動').length,
     dup:    members.filter(m  => (m['狀態'] || '').includes('重複聘任')).length,
+    normal: members.filter(m  => m['狀態'] === '正常').length,
   };
 }
 
@@ -670,30 +775,30 @@ function generateReport(rawResults) {
   let totT = 0, totN = 0, totCa = 0, totCh = 0, totD = 0;
 
   const sumAoa = [
-    ['普高精舍 義工資料比對總覽', '', '', '', '', ''],
-    ['組別', '今年人數', '新增', '取消', '異動', '重複聘任'],
+    ['普高精舍 義工資料比對總覽', '', '', '', '', '', ''],
+    ['組別', '今年人數（不含重複聘任）', '正常', '新增', '取消', '異動', '重複聘任'],
   ];
   for (const g of gNames) {
     const { '今年成員': mb, '取消名單': cn } = rawResults[g];
     const st = countStats(mb, cn);
-    sumAoa.push([g, mb.length, st.new, st.cancel, st.change, st.dup]);
-    totT += mb.length; totN += st.new; totCa += st.cancel; totCh += st.change; totD += st.dup;
+    sumAoa.push([g, st.total, st.normal, st.new, st.cancel, st.change, st.dup]);
+    totT += st.total; totN += st.new; totCa += st.cancel; totCh += st.change; totD += st.dup;
   }
-  sumAoa.push(['合計', totT, totN, totCa, totCh, totD]);
+  sumAoa.push(['合計', totT, '', totN, totCa, totCh, totD]);
   sumAoa.push([]);
-  sumAoa.push(['顏色說明', '', '', '', '', '']);
+  sumAoa.push(['顏色說明', '', '', '', '', '', '']);
   sumAoa.push(['新增', '']); sumAoa.push(['取消', '']);
   sumAoa.push(['異動', '']); sumAoa.push(['重複聘任', '']);
 
   const wsSum = XLSX.utils.aoa_to_sheet(sumAoa);
-  wsSum['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 5 } }];
-  wsSum['!cols']   = [16, 10, 8, 8, 8, 10].map(w => ({ wch: w }));
+  wsSum['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 6 } }];
+  wsSum['!cols']   = [16, 22, 8, 8, 8, 8, 10].map(w => ({ wch: w }));
 
-  styleRow(wsSum, 0, 6, S.title);
-  styleRow(wsSum, 1, 6, S.header);
+  styleRow(wsSum, 0, 7, S.title);
+  styleRow(wsSum, 1, 7, S.header);
   const totRow    = 2 + gNames.length;
-  const legendRow = totRow + 3;  // 合計 + 空行 + 顏色說明 + 1
-  styleRow(wsSum, totRow, 6, S.total);
+  const legendRow = totRow + 3;
+  styleRow(wsSum, totRow, 7, S.total);
   [S.new, S.cancel, S.change, S.dup].forEach((st, i) => {
     ensureCell(wsSum, legendRow + i, 0).s = st;
   });
@@ -707,7 +812,7 @@ function generateReport(rawResults) {
 
     const aoa = [
       [`${group}　義工名單`, ...Array(9).fill('')],
-      [`新增 ${st.new} 人　　取消 ${st.cancel} 人　　異動 ${st.change} 人　　重複聘任 ${st.dup} 人　　本年合計 ${members.length} 人`,
+      [`正常 ${st.normal} 人　　新增 ${st.new} 人　　取消 ${st.cancel} 人　　異動 ${st.change} 人　　重複聘任 ${st.dup} 人　　本年合計 ${st.total} 人（不含重複聘任）`,
        ...Array(9).fill('')],
       [...RCOLS],
     ];
@@ -774,6 +879,9 @@ let allResults        = null;
 let compareRawResults = null;
 let groupNames        = [];
 let currentIdx        = -1;
+let lastYearList      = null;  // 去年完整名單（補充時重新比對用）
+let thisYearDict      = null;  // 今年各組資料（補充時合併用）
+let ambiguousList     = [];    // 同名待確認衝突清單
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //  UI 函式
@@ -827,7 +935,9 @@ async function doCompare() {
 
     const lastWb = XLSX.read(lastBuf, { type: 'array' });
     const thisWb = XLSX.read(thisBuf, { type: 'array' });
-    const raw    = compareVolunteers(loadLastYear(lastWb), loadThisYear(thisWb));
+    lastYearList = loadLastYear(lastWb);
+    thisYearDict = loadThisYear(thisWb);
+    const raw    = compareVolunteers(lastYearList, thisYearDict);
 
     compareRawResults = raw;
     allResults        = {};
@@ -836,7 +946,7 @@ async function doCompare() {
     for (const g of groupNames) {
       const members   = raw[g]['今年成員'];
       const cancelled = raw[g]['取消名單'];
-      allResults[g]   = { summary: { total: members.length, ...countStats(members, cancelled) }, members, cancelled };
+      allResults[g]   = { summary: countStats(members, cancelled), members, cancelled };
     }
 
     renderResults();
@@ -855,11 +965,12 @@ function doDownload() {
   catch (e) { showError('報表產生失敗：' + e.message); console.error(e); }
 }
 
-function renderResults() {
-  let totNew = 0, totCancel = 0, totChange = 0, totDup = 0, totTotal = 0;
+function renderResults(doScroll = true) {
+  let totNew = 0, totCancel = 0, totChange = 0, totDup = 0, totTotal = 0, totNormal = 0;
   groupNames.forEach(g => {
     const s = allResults[g].summary;
-    totNew += s.new; totCancel += s.cancel; totChange += s.change; totDup += s.dup; totTotal += s.total;
+    totNew += s.new; totCancel += s.cancel; totChange += s.change;
+    totDup += s.dup; totTotal += s.total; totNormal += s.normal;
   });
 
   document.getElementById('stats-row').innerHTML = `
@@ -874,6 +985,7 @@ function renderResults() {
     return `<tr>
       <td style="text-align:left">${esc(g)}</td>
       <td>${s.total}</td>
+      <td style="${s.normal ? 'background:#e0f2fe' : ''}">${s.normal}</td>
       <td style="${s.new    ? 'background:#C6EFCE' : ''}">${s.new}</td>
       <td style="${s.cancel ? 'background:#FFC7CE' : ''}">${s.cancel}</td>
       <td style="${s.change ? 'background:#FFEB9C' : ''}">${s.change}</td>
@@ -884,13 +996,14 @@ function renderResults() {
   document.getElementById('summary-table').innerHTML = `
     <thead><tr>
       <th style="text-align:left">組別</th>
-      <th>今年人數</th><th>新增</th><th>取消</th><th>異動</th><th>重複聘任</th>
+      <th>今年人數<br><span style="font-weight:400;font-size:.78rem;color:#666">（不含重複聘任）</span></th>
+      <th>正常</th><th>新增</th><th>取消</th><th>異動</th><th>重複聘任</th>
     </tr></thead>
     <tbody>
       ${bodyRows}
       <tr class="total-row">
         <td style="text-align:left">合計</td>
-        <td>${totTotal}</td><td>${totNew}</td><td>${totCancel}</td><td>${totChange}</td><td>${totDup}</td>
+        <td>${totTotal}</td><td>${totNormal}</td><td>${totNew}</td><td>${totCancel}</td><td>${totChange}</td><td>${totDup}</td>
       </tr>
     </tbody>
   `;
@@ -901,7 +1014,18 @@ function renderResults() {
 
   if (groupNames.length > 0) showGroup(0);
   document.getElementById('results').style.display = 'block';
-  document.getElementById('results').scrollIntoView({ behavior: 'smooth' });
+
+  // 更新補充資料的組別下拉選單（涵蓋所有已知組別）
+  const suppSel = document.getElementById('supp-group');
+  if (suppSel) {
+    const cur = suppSel.value;
+    suppSel.innerHTML = '<option value="">— 請選擇組別 —</option>' +
+      KNOWN_GROUPS.map(g => `<option value="${esc(g)}"${g === cur ? ' selected' : ''}>${esc(g)}</option>`).join('');
+  }
+
+  updateMissingGroups();
+  renderAmbiguous();
+  if (doScroll) document.getElementById('results').scrollIntoView({ behavior: 'smooth' });
 }
 
 function showStatusList(type) {
@@ -945,6 +1069,415 @@ function closeModal() {
   document.getElementById('modal-overlay').style.display = 'none';
 }
 
+// ── 同名衝突偵測 ───────────────────────────────────────────────
+function detectAmbiguous() {
+  if (!thisYearDict) return [];
+  const nameGroups = {};  // nameKey → [{group, member}]
+  for (const [group, members] of Object.entries(thisYearDict)) {
+    for (const m of members) {
+      if (m['學員編號']) continue;  // 有編號就不算模糊
+      const nk = `${m['姓名']}__${m['法名'] || ''}`;
+      if (!m['姓名']) continue;
+      (nameGroups[nk] ??= []).push({ group, member: m });
+    }
+  }
+  return Object.entries(nameGroups)
+    .filter(([, entries]) => new Set(entries.map(e => e.group)).size >= 2)
+    .map(([nk, entries]) => {
+      const [name, faming] = nk.split('__');
+      return { nk, name, faming: faming || '', entries };
+    });
+}
+
+function renderAmbiguous() {
+  ambiguousList = detectAmbiguous();
+  const card = document.getElementById('ambiguous-card');
+  if (!card) return;
+
+  if (ambiguousList.length === 0) { card.style.display = 'none'; return; }
+
+  const items = ambiguousList.map((conflict, ci) => {
+    const groupSet  = [...new Set(conflict.entries.map(e => e.group))];
+    const entryRows = conflict.entries.map((e, ei) => {
+      const hasId = !!e.member['學員編號'];
+      return `
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #f3f4f6;flex-wrap:wrap">
+          <span style="min-width:100px;font-weight:600;color:#374151">${esc(e.group)}</span>
+          <span style="color:#666;font-size:.85rem">職稱：${esc(e.member['今年職稱'] || '（空）')}</span>
+          ${hasId ? `<span style="font-size:.82rem;color:#16a34a;font-weight:600;background:#dcfce7;padding:2px 8px;border-radius:10px">✓ 編號 ${esc(e.member['學員編號'])}</span>` : ''}
+          <button class="btn-purple" style="padding:5px 14px;font-size:.85rem;margin-left:auto"
+            onclick="openEditModal(${ci}, ${ei})">✏ 編輯資料</button>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div style="background:#fafafa;border:1px solid #e5e7eb;border-radius:8px;padding:12px 14px;margin-bottom:10px">
+        <div style="margin-bottom:8px">
+          <strong>${esc(conflict.name)}</strong>
+          ${conflict.faming ? `<span style="color:#666;font-size:.9rem">（法名：${esc(conflict.faming)}）</span>` : ''}
+          <span style="font-size:.82rem;color:#b45309;margin-left:8px">
+            出現在 ${groupSet.length} 個組別：${groupSet.map(esc).join('、')}
+          </span>
+        </div>
+        ${entryRows}
+      </div>
+    `;
+  }).join('');
+
+  card.innerHTML = `
+    <div class="card-title" style="margin-bottom:6px;color:#b45309">
+      ⚠ 待確認名單（同名同姓，共 ${ambiguousList.length} 筆）
+    </div>
+    <p style="font-size:.85rem;color:#666;margin-bottom:14px">
+      以下人員無學員編號且出現在多個組別，可能是同名不同人。<br>
+      請點擊「✏ 編輯資料」補齊學員資料。填入學員編號後可解決同名衝突：<br>
+      同一人 → 各組填相同編號（系統標為重複聘任）；不同人 → 填不同編號（各自獨立比對）。
+    </p>
+    ${items}
+  `;
+  card.style.display = 'block';
+}
+
+// ── 編輯學員資料彈窗 ──────────────────────────────────────────
+let _editTarget = null;
+
+const EDIT_FIELDS = [
+  { key: '學員編號', label: '學員編號', hint: '填入後可解決同名衝突（同一人填相同編號；不同人填不同編號）' },
+  { key: '法名',    label: '法名',    hint: '' },
+  { key: '年齡',    label: '年齡',    hint: '' },
+  { key: '電話',    label: '電話',    hint: '' },
+  { key: '今年職稱', label: '今年職稱', hint: '' },
+];
+
+function _openEditModalFor(m, group) {
+  _editTarget = { member: m, group };
+  document.getElementById('edit-modal-title').textContent = '編輯學員資料';
+  document.getElementById('edit-form-body').innerHTML = `
+    <div style="background:#f3f4f6;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:.9rem">
+      <span style="color:#555">姓名：</span><strong>${esc(m['姓名'])}</strong>
+      　<span style="color:#555">組別：</span><strong>${esc(group)}</strong>
+    </div>
+    ${EDIT_FIELDS.map(f => `
+      <div style="margin-bottom:14px">
+        <label style="display:block;font-size:.85rem;font-weight:700;color:#374151;margin-bottom:4px">${esc(f.label)}</label>
+        ${f.hint ? `<div style="font-size:.78rem;color:#9ca3af;margin-bottom:5px">${esc(f.hint)}</div>` : ''}
+        <input type="text" id="edit-field-${f.key}"
+          value="${esc(m[f.key] || '')}"
+          placeholder="${f.key === '學員編號' ? '輸入學員編號…' : ''}"
+          style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:7px;
+                 font-size:.9rem;font-family:inherit;outline:none;transition:border-color .15s"
+          onfocus="this.style.borderColor='#7c3aed'" onblur="this.style.borderColor='#d1d5db'">
+      </div>
+    `).join('')}
+  `;
+  document.getElementById('edit-modal-overlay').style.display = 'flex';
+}
+
+function openEditModal(ci, ei) {
+  const entry = ambiguousList[ci].entries[ei];
+  _openEditModalFor(entry.member, entry.group);
+}
+
+function openMemberEdit(gIdx, memberIdx) {
+  const group = groupNames[gIdx];
+  const m = thisYearDict[group]?.[memberIdx];
+  if (!m) return;
+  _openEditModalFor(m, group);
+}
+
+function closeEditModal() {
+  document.getElementById('edit-modal-overlay').style.display = 'none';
+  _editTarget = null;
+}
+
+function savePersonEdit() {
+  if (!_editTarget) return;
+  const m = _editTarget.member;
+
+  for (const f of EDIT_FIELDS) {
+    const el = document.getElementById(`edit-field-${f.key}`);
+    if (el) m[f.key] = el.value.trim();
+  }
+
+  closeEditModal();
+
+  // 重新比對（不捲頁）
+  const raw = compareVolunteers(lastYearList, thisYearDict);
+  compareRawResults = raw;
+  allResults  = {};
+  groupNames  = Object.keys(raw);
+  for (const g of groupNames) {
+    const mbs = raw[g]['今年成員'];
+    const cns = raw[g]['取消名單'];
+    allResults[g] = { summary: countStats(mbs, cns), members: mbs, cancelled: cns };
+  }
+  renderResults(false);
+}
+
+function confirmPersonId(inputId) {
+  const input  = document.getElementById(inputId);
+  const newId  = input?.value.trim();
+  const nk     = input?.dataset.nk;
+  const group  = input?.dataset.group;
+
+  if (!newId)  { input.style.borderColor = '#ef4444'; input.focus(); return; }
+  if (!nk || !group || !thisYearDict?.[group]) return;
+
+  const [name, faming] = nk.split('__');
+  const target = thisYearDict[group].find(m =>
+    m['姓名'] === name && (m['法名'] || '') === (faming || '') && !m['學員編號']
+  );
+  if (!target) { alert('找不到對應成員（可能已更新）'); return; }
+  target['學員編號'] = newId;
+
+  // 重新比對（不捲頁）
+  const raw = compareVolunteers(lastYearList, thisYearDict);
+  compareRawResults = raw;
+  allResults  = {};
+  groupNames  = Object.keys(raw);
+  for (const g of groupNames) {
+    const mbs = raw[g]['今年成員'];
+    const cns = raw[g]['取消名單'];
+    allResults[g] = { summary: countStats(mbs, cns), members: mbs, cancelled: cns };
+  }
+  renderResults(false);
+}
+
+// ── 未上傳提示 ────────────────────────────────────────────────
+function updateMissingGroups() {
+  const el = document.getElementById('missing-groups');
+  if (!el) return;
+  const missing = KNOWN_GROUPS.filter(g => !thisYearDict || !thisYearDict[g] || thisYearDict[g].length === 0);
+  if (missing.length === 0) {
+    el.innerHTML = '<span style="font-size:.85rem;color:#16a34a">✓ 所有組別均已上傳今年資料</span>';
+  } else {
+    el.innerHTML = `
+      <div style="font-size:.85rem;color:#b45309;margin-bottom:8px">
+        ⚠ 尚未上傳今年資料的組別（${missing.length} 組），點擊可快速帶入選單：
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${missing.map(g => `<button class="missing-chip" onclick="selectSuppGroup('${esc(g)}')">${esc(g)}</button>`).join('')}
+      </div>
+    `;
+  }
+}
+
+function selectSuppGroup(group) {
+  const sel = document.getElementById('supp-group');
+  if (sel) sel.value = group;
+  document.getElementById('supp-msg').textContent = '';
+}
+
+// ── 補充資料 ──────────────────────────────────────────────────
+function onSuppFileChange() {
+  const file = document.getElementById('supp-file').files[0];
+  document.getElementById('supp-filename').textContent = file ? '✓ ' + file.name : '';
+  document.getElementById('supp-msg').textContent = '';
+}
+
+async function doSupplement() {
+  const group = document.getElementById('supp-group').value;
+  const file  = document.getElementById('supp-file').files[0];
+  const msgEl = document.getElementById('supp-msg');
+
+  if (!file)  { msgEl.style.color = '#b91c1c'; msgEl.textContent = '請先選擇 Excel 檔案'; return; }
+  if (!lastYearList || !thisYearDict) { msgEl.style.color = '#b91c1c'; msgEl.textContent = '請先執行比對'; return; }
+
+  msgEl.textContent = '處理中…'; msgEl.style.color = '#2563eb';
+
+  try {
+    const buf = await readFileAsBuffer(file);
+    const wb  = XLSX.read(buf, { type: 'array' });
+
+    // 偵測是否含多個已知組別工作表
+    const groupSheets = wb.SheetNames.filter(s => KNOWN_GROUPS.includes(s) && !SKIP_SHEETS.has(s));
+    const isMulti = groupSheets.length >= 2;
+
+    if (!isMulti && !group) {
+      msgEl.style.color = '#b91c1c';
+      msgEl.textContent = '請先選擇組別（或上傳含多個組別工作表的 Excel）';
+      return;
+    }
+
+    const summaryParts = [];
+
+    if (isMulti) {
+      // ── 多組模式：每個 sheet 獨立處理 ──────────────────────
+      for (const sh of groupSheets) {
+        const rows = sheetToObjects(wb.Sheets[sh]);
+        if (rows.length === 0) continue;
+        const headers  = Object.keys(rows[0]);
+        const titleCol = findTitleCol(headers, true);
+        if (!titleCol || !headers.includes('姓名')) continue;
+
+        const incoming = rows.map(row => {
+          const name = safeStr(row['姓名']);
+          if (!name) return null;
+          const [, cleanTitle] = parseGroupFromTitle(safeStr(row[titleCol]));
+          if (!cleanTitle) return null;
+          return {
+            '學員編號': safeStr(row['學員編號']),
+            '姓名':     name,
+            '法名':     safeStr(row['法名']),
+            '年齡':     safeStr(row['年齡']),
+            '電話':     safeStr(row['行動電話']),
+            '今年職稱': cleanTitle,
+            '今年組別': sh,
+          };
+        }).filter(Boolean);
+
+        if (incoming.length === 0) continue;
+
+        const existing    = thisYearDict[sh] ? [...thisYearDict[sh]] : [];
+        const existingIds = new Set(existing.map(m => m['學員編號']).filter(Boolean));
+        const existingNks = new Set(existing.map(m => `${m['姓名']}_${m['法名']}`));
+        let added = 0;
+
+        for (const m of incoming) {
+          const nk = `${m['姓名']}_${m['法名']}`;
+          if ((m['學員編號'] && existingIds.has(m['學員編號'])) ||
+              (nk !== '_' && existingNks.has(nk))) continue;
+          existing.push(m);
+          if (m['學員編號']) existingIds.add(m['學員編號']);
+          existingNks.add(nk);
+          added++;
+        }
+
+        thisYearDict[sh] = existing;
+        summaryParts.push(`${sh} +${added} 筆（讀入 ${incoming.length}，跳過重複 ${incoming.length - added}）`);
+      }
+
+      if (summaryParts.length === 0) throw new Error('所有工作表均未找到有效義工資料');
+
+    } else {
+      // ── 單組模式（原有邏輯）─────────────────────────────────
+      const rows = sheetToObjects(wb.Sheets[wb.SheetNames[0]]);
+      if (rows.length === 0) throw new Error('檔案中找不到資料');
+
+      const headers  = Object.keys(rows[0]);
+      const titleCol = findTitleCol(headers, true);
+      if (!titleCol) throw new Error('找不到職稱欄位，請確認檔案包含「護法會職稱」或「職稱」欄位');
+
+      const incoming = rows.map(row => {
+        const name = safeStr(row['姓名']);
+        if (!name) return null;
+        const [, cleanTitle] = parseGroupFromTitle(safeStr(row[titleCol]));
+        if (!cleanTitle) return null;
+        return {
+          '學員編號': safeStr(row['學員編號']),
+          '姓名':     name,
+          '法名':     safeStr(row['法名']),
+          '年齡':     safeStr(row['年齡']),
+          '電話':     safeStr(row['行動電話']),
+          '今年職稱': cleanTitle,
+          '今年組別': group,
+        };
+      }).filter(Boolean);
+
+      if (incoming.length === 0) throw new Error('檔案中找不到有效義工資料（姓名與職稱不可為空）');
+
+      const existing    = thisYearDict[group] ? [...thisYearDict[group]] : [];
+      const existingIds = new Set(existing.map(m => m['學員編號']).filter(Boolean));
+      const existingNks = new Set(existing.map(m => `${m['姓名']}_${m['法名']}`));
+      let added = 0;
+
+      for (const m of incoming) {
+        const nk = `${m['姓名']}_${m['法名']}`;
+        if ((m['學員編號'] && existingIds.has(m['學員編號'])) ||
+            (nk !== '_' && existingNks.has(nk))) continue;
+        existing.push(m);
+        if (m['學員編號']) existingIds.add(m['學員編號']);
+        existingNks.add(nk);
+        added++;
+      }
+
+      thisYearDict[group] = existing;
+      summaryParts.push(`「${group}」+${added} 筆（讀入 ${incoming.length}，跳過重複 ${incoming.length - added}）`);
+    }
+
+    // 重新比對（完整跑一次，包含重複聘任檢查）
+    const raw = compareVolunteers(lastYearList, thisYearDict);
+    compareRawResults = raw;
+    allResults  = {};
+    groupNames  = Object.keys(raw);
+    for (const g of groupNames) {
+      const members   = raw[g]['今年成員'];
+      const cancelled = raw[g]['取消名單'];
+      allResults[g]   = { summary: countStats(members, cancelled), members, cancelled };
+    }
+
+    renderResults(false);
+
+    // 重設上傳欄位
+    document.getElementById('supp-file').value = '';
+    document.getElementById('supp-filename').textContent = '';
+
+    const prefix = isMulti ? `已補充 ${summaryParts.length} 個組別：` : '已補充：';
+    msgEl.style.color = '#16a34a';
+    msgEl.textContent = prefix + summaryParts.join('；');
+  } catch (e) {
+    msgEl.style.color = '#b91c1c';
+    msgEl.textContent = '補充失敗：' + e.message;
+    console.error(e);
+  }
+}
+
+// ── 跨組查詢 ──────────────────────────────────────────────────
+function matchesQuery(person, q) {
+  const lq = q.toLowerCase();
+  return (person['姓名']    || '').toLowerCase().includes(lq) ||
+         (person['法名']    || '').toLowerCase().includes(lq) ||
+         (person['學員編號'] || '').toLowerCase().includes(lq);
+}
+
+function doGlobalSearch() {
+  const q         = document.getElementById('global-search').value.trim();
+  const container = document.getElementById('global-search-results');
+  if (!q || !allResults) { container.style.display = 'none'; return; }
+
+  const rows = [];
+  groupNames.forEach(g => {
+    allResults[g].members.forEach(m => {
+      if (matchesQuery(m, q)) rows.push({ group: g, ...m });
+    });
+    allResults[g].cancelled.forEach(c => {
+      if (matchesQuery(c, q)) rows.push({ group: g, ...c });
+    });
+  });
+
+  if (rows.length === 0) {
+    container.innerHTML = '<div style="color:#888;text-align:center;padding:12px">查無符合結果</div>';
+    container.style.display = 'block';
+    return;
+  }
+
+  const COLS  = ['組別','姓名','法名','學員編號','去年職稱','今年職稱','狀態','備註'];
+  const thead = `<thead><tr>${COLS.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead>`;
+  const tbody = rows.map(r => {
+    const cls = rowClass(r['狀態'] || '');
+    return `<tr class="${cls}">
+      <td>${esc(r.group)}</td><td>${esc(r['姓名']||'')}</td><td>${esc(r['法名']||'')}</td>
+      <td>${esc(r['學員編號']||'')}</td><td>${esc(r['去年職稱']||'')}</td>
+      <td>${esc(r['今年職稱']||'')}</td><td>${esc(r['狀態']||'')}</td><td>${esc(r['備註']||'')}</td>
+    </tr>`;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="search-count">找到 ${rows.length} 人</div>
+    <div class="tbl-wrap"><table>${thead}<tbody>${tbody}</tbody></table></div>
+  `;
+  container.style.display = 'block';
+}
+
+// ── 組內過濾 ──────────────────────────────────────────────────
+function filterGroupRows(q) {
+  const lq = q.trim().toLowerCase();
+  document.querySelectorAll('#group-detail tbody tr[data-name]').forEach(row => {
+    row.style.display = (!lq || row.dataset.name.includes(lq)) ? '' : 'none';
+  });
+}
+
 function showGroup(idx) {
   if (currentIdx >= 0) {
     const prev = document.getElementById('tab-' + currentIdx);
@@ -963,34 +1496,41 @@ function showGroup(idx) {
   const members   = gdata.members;
   const cancelled = gdata.cancelled;
 
-  const COLS  = ['序號','姓名','法名','學員編號','年齡','電話','去年職稱','今年職稱','狀態','備註'];
+  const COLS  = ['序號','姓名','法名','學員編號','年齡','電話','去年職稱','今年職稱','狀態','備註',''];
   const thead = `<thead><tr>${COLS.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead>`;
 
-  function personRow(seq, p) {
+  function personRow(seq, p, memberIdx) {
     const cls  = rowClass(p['狀態'] || '');
+    const dn   = [p['姓名']||'', p['法名']||'', p['學員編號']||''].join(' ').toLowerCase();
     const vals = [seq,
       esc(p['姓名']||''), esc(p['法名']||''), esc(p['學員編號']||''),
       esc(p['年齡']||''), esc(p['電話']||''), esc(p['去年職稱']||''),
       esc(p['今年職稱']||''), esc(p['狀態']||''), esc(p['備註']||''),
     ];
-    return `<tr class="${cls}">${vals.map(v => `<td>${v}</td>`).join('')}</tr>`;
+    const editCell = `<td style="padding:3px;text-align:center">
+      <button onclick="openMemberEdit(${idx},${memberIdx})"
+        style="background:none;border:1px solid #ddd6fe;cursor:pointer;font-size:.9rem;
+               padding:2px 7px;border-radius:5px;color:#7c3aed;font-family:inherit"
+        title="編輯資料">✏</button></td>`;
+    return `<tr class="${cls}" data-name="${dn}">${vals.map(v => `<td>${v}</td>`).join('')}${editCell}</tr>`;
   }
 
-  const memberRows = members.map((m, i) => personRow(i + 1, m)).join('');
+  const memberRows = members.map((m, i) => personRow(i + 1, m, i)).join('');
 
   let cancelSection = '';
   if (cancelled.length > 0) {
     const cRows = cancelled.map((c, i) => {
       const cls  = c['狀態'] === '取消' ? 'row-cancel' : 'row-change';
+      const dn   = [c['姓名']||'', c['法名']||'', c['學員編號']||''].join(' ').toLowerCase();
       const vals = [i + 1,
         esc(c['姓名']||''), esc(c['法名']||''), esc(c['學員編號']||''),
         esc(c['年齡']||''), esc(c['電話']||''), esc(c['去年職稱']||''),
         '', esc(c['狀態']||''), esc(c['備註']||''),
       ];
-      return `<tr class="${cls}">${vals.map(v => `<td>${v}</td>`).join('')}</tr>`;
+      return `<tr class="${cls}" data-name="${dn}">${vals.map(v => `<td>${v}</td>`).join('')}<td></td></tr>`;
     }).join('');
     cancelSection = `
-      <tr class="divider-row"><td colspan="10">── 以下人員去年在本組，今年未排 ──</td></tr>
+      <tr class="divider-row"><td colspan="11">── 以下人員去年在本組，今年未排 ──</td></tr>
       <tr>${COLS.map(c => `<th>${esc(c)}</th>`).join('')}</tr>
       ${cRows}
     `;
@@ -999,7 +1539,12 @@ function showGroup(idx) {
   document.getElementById('group-detail').innerHTML = `
     <div class="group-title">${esc(groupName)}　義工名單</div>
     <div class="group-stats">
-      新增 ${s.new} 人　　取消 ${s.cancel} 人　　異動 ${s.change} 人　　重複聘任 ${s.dup} 人　　本年合計 ${s.total} 人
+      正常 ${s.normal} 人　　新增 ${s.new} 人　　取消 ${s.cancel} 人　　異動 ${s.change} 人　　重複聘任 ${s.dup} 人　　本年合計 ${s.total} 人（不含重複聘任）
+    </div>
+    <div style="margin-bottom:10px">
+      <input type="text" class="search-input" id="group-search"
+             placeholder="在本組搜尋姓名、法名或學員編號…"
+             oninput="filterGroupRows(this.value)">
     </div>
     <div class="tbl-wrap">
       <table>${thead}<tbody>${memberRows}${cancelSection}</tbody></table>
