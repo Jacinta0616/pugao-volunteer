@@ -477,7 +477,7 @@ function parseGroupFromTitle(title) {
 function findTitleCol(headers, preferLatest = true) {
   const yearCols = {};
   for (const col of headers) {
-    const m = String(col).match(/^本組(\d+)職稱$/);
+    const m = String(col).match(/^本組(\d+)職稱$/) || String(col).match(/^(\d+)護法會職稱$/);
     if (m) yearCols[parseInt(m[1])] = col;
   }
   if (Object.keys(yearCols).length > 0) {
