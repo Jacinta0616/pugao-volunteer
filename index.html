@@ -1453,6 +1453,15 @@ function closeModal() {
   document.getElementById('modal-overlay').style.display = 'none';
 }
 
+// ── 卡片收折 ──────────────────────────────────────────────────
+function toggleCard(bodyId, btn) {
+  const body = document.getElementById(bodyId);
+  if (!body) return;
+  const hidden = body.style.display === 'none';
+  body.style.display = hidden ? '' : 'none';
+  if (btn) btn.textContent = hidden ? '▲' : '▼';
+}
+
 // ── 同名衝突偵測 ───────────────────────────────────────────────
 function detectAmbiguous() {
   if (!thisYearDict) return [];
@@ -1510,15 +1519,22 @@ function renderAmbiguous() {
   }).join('');
 
   card.innerHTML = `
-    <div class="card-title" style="margin-bottom:6px;color:#b45309">
-      ⚠ 待確認名單（同名同姓，共 ${ambiguousList.length} 筆）
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <div class="card-title" style="margin:0;color:#b45309">
+        ⚠ 待確認名單（同名同姓，共 ${ambiguousList.length} 筆）
+      </div>
+      <button onclick="toggleCard('ambiguous-body', this)"
+              style="background:none;border:1px solid #e5e7eb;border-radius:6px;cursor:pointer;
+                     padding:4px 10px;font-size:.85rem;color:#666;font-family:inherit">▲</button>
     </div>
-    <p style="font-size:.85rem;color:#666;margin-bottom:14px">
-      以下人員無學員編號且出現在多個組別，可能是同名不同人。<br>
-      請點擊「✏ 編輯資料」補齊學員資料。填入學員編號後可解決同名衝突：<br>
-      同一人 → 各組填相同編號（系統標為重複聘任）；不同人 → 填不同編號（各自獨立比對）。
-    </p>
-    ${items}
+    <div id="ambiguous-body">
+      <p style="font-size:.85rem;color:#666;margin-bottom:14px">
+        以下人員無學員編號且出現在多個組別，可能是同名不同人。<br>
+        請點擊「✏ 編輯資料」補齊學員資料。填入學員編號後可解決同名衝突：<br>
+        同一人 → 各組填相同編號（系統標為重複聘任）；不同人 → 填不同編號（各自獨立比對）。
+      </p>
+      ${items}
+    </div>
   `;
   card.style.display = 'block';
 }
@@ -1616,7 +1632,7 @@ function renderDupResolution() {
       <div class="card-title" style="color:#c2410c;margin:0">
         🔄 重複聘任待確認（${persons.length} 人 / ${totalEntries} 筆）
       </div>
-      <div style="display:flex;gap:8px">
+      <div style="display:flex;gap:8px;align-items:center">
         <button onclick="downloadDupReport()"
                 style="background:#fff;border:1.5px solid #f97316;color:#ea580c;padding:6px 14px;
                        border-radius:7px;cursor:pointer;font-size:.85rem;font-family:inherit;font-weight:600">
@@ -1627,13 +1643,18 @@ function renderDupResolution() {
                        border-radius:7px;cursor:pointer;font-size:.85rem;font-family:inherit;font-weight:700">
           ✓ 全部確認並歸檔
         </button>
+        <button onclick="toggleCard('dup-resolve-body', this)"
+                style="background:none;border:1px solid #e5e7eb;border-radius:6px;cursor:pointer;
+                       padding:5px 10px;font-size:.85rem;color:#666;font-family:inherit">▲</button>
       </div>
     </div>
-    <p style="font-size:.83rem;color:#666;margin-bottom:12px">
-      每人用下拉選單選擇要保留的組別，確認後系統自動移除其餘組別並下載歸檔 Excel。
-    </p>
-    <div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;background:#fff">
-      ${items}
+    <div id="dup-resolve-body">
+      <p style="font-size:.83rem;color:#666;margin-bottom:12px">
+        每人用下拉選單選擇要保留的組別，確認後系統自動移除其餘組別並下載歸檔 Excel。
+      </p>
+      <div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;background:#fff">
+        ${items}
+      </div>
     </div>
   `;
   card.style.display = 'block';
