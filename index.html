@@ -85,6 +85,56 @@
     }
     .btn-download:hover { background: #15803d; }
 
+    /* ── Archive Panel ── */
+    .archive-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid #f0f4f8;
+    }
+    .archive-item:last-child { border-bottom: none; }
+    .archive-item-name {
+      flex: 1; font-weight: 600; color: #1a2340; font-size: .95rem;
+    }
+    .archive-item-meta {
+      font-size: .8rem; color: #888; white-space: nowrap;
+    }
+    .archive-save-row {
+      display: flex; gap: 8px; align-items: center; margin-top: 12px; padding-top: 12px;
+      border-top: 1px solid #e5e7eb;
+    }
+
+    /* ── Restore Banner ── */
+    .restore-banner {
+      background: #fef9c3;
+      border: 1px solid #fbbf24;
+      border-radius: 10px;
+      padding: 12px 18px;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .restore-banner .restore-msg {
+      flex: 1;
+      font-size: .9rem;
+      color: #78350f;
+    }
+    .restore-banner .restore-btn {
+      padding: 6px 14px;
+      border: none; border-radius: 6px;
+      font-size: .85rem; font-family: inherit;
+      cursor: pointer; font-weight: 600;
+    }
+    .restore-banner .restore-btn.primary {
+      background: #d97706; color: #fff;
+    }
+    .restore-banner .restore-btn.primary:hover { background: #b45309; }
+    .restore-banner .restore-btn.secondary {
+      background: #e5e7eb; color: #374151;
+    }
+    .restore-banner .restore-btn.secondary:hover { background: #d1d5db; }
+
     /* ── Loading ── */
     #loading {
       text-align: center;
@@ -293,6 +343,32 @@
     <p>上傳去年與今年的護法會資料，自動比對新增、取消、異動、重複聘任</p>
   </div>
 
+  <!-- Restore Banner -->
+  <div class="restore-banner" id="restore-banner" style="display:none">
+    <span class="restore-msg" id="restore-msg">🗄️ 發現上次比對紀錄，是否還原？</span>
+    <button class="restore-btn primary" onclick="doRestore()">還原上次紀錄</button>
+    <button class="restore-btn secondary" onclick="doClearStorage()">清除暫存</button>
+    <button class="restore-btn secondary" onclick="document.getElementById('restore-banner').style.display='none'">忽略</button>
+  </div>
+
+  <!-- Archive Panel -->
+  <div class="card" id="archive-panel" style="margin-bottom:16px">
+    <div class="card-header" style="margin-bottom:8px">
+      <div class="card-title">📂 歷年存檔</div>
+      <span style="font-size:.8rem;color:#888">可儲存每年比對資料，下次直接載入</span>
+    </div>
+    <div id="archive-list">
+      <div style="color:#aaa;font-size:.85rem">尚無存檔。執行比對後輸入名稱即可儲存。</div>
+    </div>
+    <div class="archive-save-row">
+      <input type="text" id="archive-name-input" class="search-input"
+             placeholder="存檔名稱（如：115年度）"
+             style="flex:1;margin:0"
+             onkeydown="if(event.key==='Enter') doSaveArchive()">
+      <button class="btn-download" onclick="doSaveArchive()" style="white-space:nowrap">💾 儲存目前比對</button>
+    </div>
+  </div>
+
   <!-- Template Download -->
   <div style="text-align:center;margin-bottom:20px">
     <span style="font-size:.85rem;color:#888;margin-right:8px">不確定格式？先下載模板：</span>
@@ -364,6 +440,9 @@
     <!-- Ambiguous (同名待確認) -->
     <div id="ambiguous-card" class="card" style="display:none;margin-bottom:20px;border-left:4px solid #f59e0b"></div>
 
+    <!-- Dup Resolve (重複聘任確認) -->
+    <div id="dup-resolve-card" class="card" style="display:none;margin-bottom:20px;border-left:4px solid #f97316"></div>
+
     <!-- Global Search -->
     <div class="card" style="margin-bottom:20px">
       <div style="display:flex;align-items:center;gap:12px">
@@ -430,7 +509,11 @@
   <div class="modal-box" onclick="event.stopPropagation()">
     <div class="modal-header">
       <h3 id="modal-title"></h3>
-      <button class="modal-close" onclick="closeModal()">✕</button>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="btn-download" id="modal-download-btn" style="display:none;font-size:.82rem;padding:5px 12px"
+                onclick="downloadDupReport()">⬇ 下載名單</button>
+        <button class="modal-close" onclick="closeModal()">✕</button>
+      </div>
     </div>
     <div class="modal-body">
       <div class="tbl-wrap">
@@ -879,6 +962,171 @@ function generateReport(rawResults) {
   document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 
+// ── 單組報表下載 ───────────────────────────────────────────────
+function downloadGroupReport(groupName) {
+  if (!compareRawResults?.[groupName]) return;
+
+  const { '今年成員': members, '取消名單': cancelled } = compareRawResults[groupName];
+  const st = countStats(members, cancelled);
+
+  const RCOLS   = ['序號','姓名','法名','學員編號','年齡','電話','去年職稱','今年職稱','狀態','備註'];
+  const RWIDTHS = [6, 10, 8, 14, 6, 16, 16, 16, 10, 30];
+
+  function sf(rgb) { return { patternType: 'solid', fgColor: { rgb } }; }
+  const S = {
+    title:  { font: { bold: true, sz: 13 }, alignment: { horizontal: 'center', vertical: 'center' } },
+    header: { fill: sf('D9E1F2'), font: { bold: true }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true } },
+    sec:    { fill: sf('F2F2F2'), font: { bold: true, color: { rgb: 'C00000' } }, alignment: { horizontal: 'center', vertical: 'center' } },
+    sumhdr: { fill: sf('F2F2F2'), alignment: { horizontal: 'center', vertical: 'center' } },
+    new:    { fill: sf('C6EFCE'), alignment: { horizontal: 'center', vertical: 'center', wrapText: true } },
+    cancel: { fill: sf('FFC7CE'), alignment: { horizontal: 'center', vertical: 'center', wrapText: true } },
+    change: { fill: sf('FFEB9C'), alignment: { horizontal: 'center', vertical: 'center', wrapText: true } },
+    dup:    { fill: sf('FFD966'), alignment: { horizontal: 'center', vertical: 'center', wrapText: true } },
+    normal: { alignment: { horizontal: 'center', vertical: 'center', wrapText: true } },
+  };
+  function statusStyle(status) {
+    if (!status) return S.normal;
+    if (status.includes('重複聘任')) return S.dup;
+    if (status.includes('新增'))     return S.new;
+    if (status.includes('取消'))     return S.cancel;
+    if (status.includes('異動'))     return S.change;
+    return S.normal;
+  }
+  function ensureCell(ws, r, c) {
+    const addr = XLSX.utils.encode_cell({ r, c });
+    if (!ws[addr]) {
+      ws[addr] = { v: '', t: 's' };
+      const rng = XLSX.utils.decode_range(ws['!ref'] || 'A1:A1');
+      if (r > rng.e.r) rng.e.r = r;
+      if (c > rng.e.c) rng.e.c = c;
+      ws['!ref'] = XLSX.utils.encode_range(rng);
+    }
+    return ws[addr];
+  }
+  function styleRow(ws, r, nCols, style) {
+    for (let c = 0; c < nCols; c++) ensureCell(ws, r, c).s = style;
+  }
+
+  const aoa = [
+    [`${groupName}　護法會名單`, ...Array(9).fill('')],
+    [`正常 ${st.normal} 人　　新增 ${st.new} 人　　取消 ${st.cancel} 人　　異動 ${st.change} 人　　重複聘任 ${st.dup} 人　　本年合計 ${st.total} 人（不含重複聘任）`,
+     ...Array(9).fill('')],
+    [...RCOLS],
+  ];
+
+  members.forEach((m, i) => aoa.push([
+    i + 1, m['姓名']||'', m['法名']||'', m['學員編號']||'',
+    m['年齡']||'', m['電話']||'', m['去年職稱']||'',
+    m['今年職稱']||'', m['狀態']||'', m['備註']||'',
+  ]));
+
+  let cancelSecRow = -1;
+  if (cancelled.length > 0) {
+    aoa.push(Array(10).fill(''));
+    cancelSecRow = aoa.length;
+    aoa.push(['── 以下人員去年在本組，今年未排 ──', ...Array(9).fill('')]);
+    aoa.push([...RCOLS]);
+    cancelled.forEach((c, i) => aoa.push([
+      i + 1, c['姓名']||'', c['法名']||'', c['學員編號']||'',
+      c['年齡']||'', c['電話']||'', c['去年職稱']||'',
+      '', c['狀態']||'', c['備註']||'',
+    ]));
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const merges = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 9 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 9 } },
+  ];
+  if (cancelSecRow >= 0)
+    merges.push({ s: { r: cancelSecRow, c: 0 }, e: { r: cancelSecRow, c: 9 } });
+  ws['!merges'] = merges;
+  ws['!cols']   = RWIDTHS.map(w => ({ wch: w }));
+
+  styleRow(ws, 0, 10, S.title);
+  styleRow(ws, 1, 10, S.sumhdr);
+  styleRow(ws, 2, 10, S.header);
+  members.forEach((m, i) => styleRow(ws, 3 + i, 10, statusStyle(m['狀態'] || '')));
+
+  if (cancelled.length > 0 && cancelSecRow >= 0) {
+    styleRow(ws, cancelSecRow,     10, S.sec);
+    styleRow(ws, cancelSecRow + 1, 10, S.header);
+    cancelled.forEach((c, i) =>
+      styleRow(ws, cancelSecRow + 2 + i, 10, c['狀態'] === '取消' ? S.cancel : S.change)
+    );
+  }
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, groupName.slice(0, 31));
+  _triggerDownload(wb, `護法會_${groupName}_名單.xlsx`);
+}
+
+// ── 重複聘任名單下載 ───────────────────────────────────────────
+function downloadDupReport() {
+  if (!allResults) return;
+
+  const rows = [];
+  groupNames.forEach(g => {
+    allResults[g].members.forEach(m => {
+      if ((m['狀態'] || '').includes('重複聘任')) rows.push({ group: g, ...m });
+    });
+  });
+  if (rows.length === 0) { alert('目前沒有重複聘任的名單'); return; }
+
+  const COLS   = ['序號','組別','姓名','法名','學員編號','年齡','電話','去年職稱','今年職稱','狀態','備註'];
+  const WIDTHS = [6, 12, 10, 8, 14, 6, 16, 16, 16, 20, 30];
+  const nCols  = COLS.length;
+
+  function sf(rgb) { return { patternType: 'solid', fgColor: { rgb } }; }
+  const S = {
+    title:  { font: { bold: true, sz: 13 }, alignment: { horizontal: 'center', vertical: 'center' } },
+    sub:    { fill: sf('F2F2F2'), alignment: { horizontal: 'center', vertical: 'center' } },
+    header: { fill: sf('D9E1F2'), font: { bold: true }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true } },
+    dup:    { fill: sf('FFD966'), alignment: { horizontal: 'center', vertical: 'center', wrapText: true } },
+  };
+  function ensureCell(ws, r, c) {
+    const addr = XLSX.utils.encode_cell({ r, c });
+    if (!ws[addr]) {
+      ws[addr] = { v: '', t: 's' };
+      const rng = XLSX.utils.decode_range(ws['!ref'] || 'A1:A1');
+      if (r > rng.e.r) rng.e.r = r;
+      if (c > rng.e.c) rng.e.c = c;
+      ws['!ref'] = XLSX.utils.encode_range(rng);
+    }
+    return ws[addr];
+  }
+  function styleRow(ws, r, style) {
+    for (let c = 0; c < nCols; c++) ensureCell(ws, r, c).s = style;
+  }
+
+  const aoa = [
+    ['普高精舍 護法會 重複聘任名單', ...Array(nCols - 1).fill('')],
+    [`共 ${rows.length} 人，同一學員被多個組別聘任，請確認是否同一人`, ...Array(nCols - 1).fill('')],
+    [...COLS],
+    ...rows.map((r, i) => [
+      i + 1, r.group, r['姓名']||'', r['法名']||'', r['學員編號']||'',
+      r['年齡']||'', r['電話']||'', r['去年職稱']||'',
+      r['今年職稱']||'', r['狀態']||'', r['備註']||'',
+    ]),
+  ];
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: nCols - 1 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: nCols - 1 } },
+  ];
+  ws['!cols'] = WIDTHS.map(w => ({ wch: w }));
+
+  styleRow(ws, 0, S.title);
+  styleRow(ws, 1, S.sub);
+  styleRow(ws, 2, S.header);
+  rows.forEach((_, i) => styleRow(ws, 3 + i, S.dup));
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '重複聘任名單');
+  _triggerDownload(wb, '護法會_重複聘任名單.xlsx');
+}
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //  UI 狀態
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -957,6 +1205,7 @@ async function doCompare() {
     }
 
     renderResults();
+    saveToLocalStorage();
   } catch (e) {
     showError('比對失敗：' + e.message);
     console.error(e);
@@ -1105,7 +1354,6 @@ function renderResults(doScroll = true) {
     totNew += s.new; totCancel += s.cancel; totChange += s.change;
     totDup += s.dup; totTotal += s.total; totNormal += s.normal;
   });
-
   document.getElementById('stats-row').innerHTML = `
     <div class="stat-card stat-new"    onclick="showStatusList('new')">   <div class="num">${totNew}</div>    <div class="label">新增</div></div>
     <div class="stat-card stat-cancel" onclick="showStatusList('cancel')"><div class="num">${totCancel}</div> <div class="label">取消</div></div>
@@ -1158,6 +1406,7 @@ function renderResults(doScroll = true) {
 
   updateMissingGroups();
   renderAmbiguous();
+  renderDupResolution();
   if (doScroll) document.getElementById('results').scrollIntoView({ behavior: 'smooth' });
 }
 
@@ -1195,6 +1444,8 @@ function showStatusList(type) {
 
   document.getElementById('modal-title').textContent = `${label} 名單（共 ${rows.length} 人）`;
   document.getElementById('modal-table').innerHTML   = `${thead}<tbody>${tbody}</tbody>`;
+  const dlBtn = document.getElementById('modal-download-btn');
+  if (dlBtn) dlBtn.style.display = (type === 'dup' && rows.length > 0) ? 'inline-block' : 'none';
   document.getElementById('modal-overlay').style.display = 'flex';
 }
 
@@ -1272,6 +1523,238 @@ function renderAmbiguous() {
   card.style.display = 'block';
 }
 
+// ── 重複聘任確認 ───────────────────────────────────────────────
+function getDupPersonGroups() {
+  if (!thisYearDict || !groupNames.length) return [];
+
+  // 與 compareVolunteers 相同邏輯，重建 presence maps
+  const byId   = {};  // eid → [{group, member}]
+  const byName = {};  // nk  → [{group, member}]
+  for (const g of groupNames) {
+    for (const m of (thisYearDict[g] || [])) {
+      const eid = m['學員編號'];
+      const nk  = `${m['姓名']}_${m['法名']}`;
+      if (eid) (byId[eid]   ??= []).push({ group: g, member: m });
+      if (nk && nk !== '_') (byName[nk] ??= []).push({ group: g, member: m });
+    }
+  }
+
+  const seen   = new Set();
+  const result = [];
+
+  // 第一輪：以學員編號跨組的重複
+  for (const [eid, entries] of Object.entries(byId)) {
+    const groups = [...new Set(entries.map(e => e.group))];
+    if (groups.length < 2) continue;
+    const key = `id:${eid}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    // 將此人的所有姓名 key 也標為已處理（避免下一輪重複計入）
+    for (const e of entries) seen.add(`nk:${e.member['姓名']}_${e.member['法名']}`);
+    const rep = entries[0].member;
+    result.push({ key, name: rep['姓名'], faming: rep['法名'], id: eid, entries });
+  }
+
+  // 第二輪：以姓名+法名跨組的重複（排除已被 ID 涵蓋的）
+  for (const [nk, entries] of Object.entries(byName)) {
+    if (seen.has(`nk:${nk}`)) continue;
+    const groups = [...new Set(entries.map(e => e.group))];
+    if (groups.length < 2) continue;
+    seen.add(`nk:${nk}`);
+    const rep = entries[0].member;
+    result.push({ key: `nk:${nk}`, name: rep['姓名'], faming: rep['法名'], id: '', entries });
+  }
+
+  return result;
+}
+
+function renderDupResolution() {
+  const card = document.getElementById('dup-resolve-card');
+  if (!card) return;
+
+  const persons = getDupPersonGroups();
+  if (persons.length === 0) { card.style.display = 'none'; return; }
+
+  // 計算總筆數（各組重複聘任記錄數）
+  const totalEntries = persons.reduce((sum, p) => sum + p.entries.length, 0);
+
+  const items = persons.map((p, idx) => {
+    const groups = [...new Set(p.entries.map(e => e.group))];
+    const options = groups.map(g => {
+      const entry = p.entries.find(e => e.group === g);
+      const title = entry ? (entry.member['今年職稱'] || '（無職稱）') : '';
+      return `<option value="${esc(g)}">${esc(g)}（${esc(title)}）</option>`;
+    }).join('');
+
+    return `
+      <div style="display:grid;grid-template-columns:1fr auto;align-items:center;gap:12px;
+                  padding:10px 12px;border-bottom:1px solid #f3f4f6;flex-wrap:wrap"
+           id="dup-row-${idx}">
+        <div style="min-width:0">
+          <strong style="font-size:.95rem">${esc(p.name)}</strong>
+          ${p.faming ? `<span style="color:#888;font-size:.85rem">／${esc(p.faming)}</span>` : ''}
+          ${p.id ? `<span style="font-size:.78rem;color:#16a34a;font-weight:600;background:#dcfce7;padding:1px 7px;border-radius:10px;margin-left:6px">學號 ${esc(p.id)}</span>` : ''}
+          <span style="font-size:.78rem;color:#c2410c;margin-left:6px">
+            跨 ${groups.length} 組：${groups.map(g => esc(g)).join('、')}
+          </span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+          <label style="font-size:.82rem;color:#555;white-space:nowrap">保留在：</label>
+          <select id="dup-sel-${idx}"
+                  style="padding:5px 8px;border:1.5px solid #d1d5db;border-radius:6px;
+                         font-size:.85rem;font-family:inherit;background:#fff;cursor:pointer">
+            ${options}
+            <option value="__remove__">— 全部移除 —</option>
+          </select>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  card.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:8px">
+      <div class="card-title" style="color:#c2410c;margin:0">
+        🔄 重複聘任待確認（${persons.length} 人 / ${totalEntries} 筆）
+      </div>
+      <div style="display:flex;gap:8px">
+        <button onclick="downloadDupReport()"
+                style="background:#fff;border:1.5px solid #f97316;color:#ea580c;padding:6px 14px;
+                       border-radius:7px;cursor:pointer;font-size:.85rem;font-family:inherit;font-weight:600">
+          📥 下載重複名單
+        </button>
+        <button onclick="confirmAllDups()"
+                style="background:#f97316;border:none;color:#fff;padding:6px 16px;
+                       border-radius:7px;cursor:pointer;font-size:.85rem;font-family:inherit;font-weight:700">
+          ✓ 全部確認並歸檔
+        </button>
+      </div>
+    </div>
+    <p style="font-size:.83rem;color:#666;margin-bottom:12px">
+      每人用下拉選單選擇要保留的組別，確認後系統自動移除其餘組別並下載歸檔 Excel。
+    </p>
+    <div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;background:#fff">
+      ${items}
+    </div>
+  `;
+  card.style.display = 'block';
+}
+
+function confirmDupKeepGroup(personKey, keepGroup) {
+  // 找出這個人的所有可能識別碼（ID 和姓名+法名）
+  const persons   = getDupPersonGroups();
+  const target    = persons.find(p => p.key === personKey);
+  if (!target) return;
+
+  const matchIds   = new Set(target.entries.map(e => e.member['學員編號']).filter(Boolean));
+  const matchNames = new Set(
+    target.entries.map(e => `${e.member['姓名']}_${e.member['法名']}`).filter(nk => nk && nk !== '_')
+  );
+
+  // 從所有組別（除 keepGroup 外）移除此人（ID 或姓名+法名符合即移除）
+  groupNames.forEach(g => {
+    if (g === keepGroup || !thisYearDict[g]) return;
+    thisYearDict[g] = thisYearDict[g].filter(m => {
+      const eid = m['學員編號'];
+      const nk  = `${m['姓名']}_${m['法名']}`;
+      return !((eid && matchIds.has(eid)) || (nk && nk !== '_' && matchNames.has(nk)));
+    });
+  });
+
+  // 重新比對（不捲頁）
+  const raw = compareVolunteers(lastYearList, thisYearDict);
+  compareRawResults = raw;
+  allResults  = {};
+  groupNames  = Object.keys(raw);
+  for (const g of groupNames) {
+    const mbs = raw[g]['今年成員'];
+    const cns = raw[g]['取消名單'];
+    allResults[g] = { summary: countStats(mbs, cns), members: mbs, cancelled: cns };
+  }
+  renderResults(false);
+  saveToLocalStorage();
+}
+
+// ── 全部確認並歸檔（批次歸組） ────────────────────────────────
+function confirmAllDups() {
+  const persons = getDupPersonGroups();
+  if (persons.length === 0) return;
+
+  // 讀取每人的選擇
+  const decisions = persons.map((p, idx) => {
+    const sel = document.getElementById(`dup-sel-${idx}`);
+    return { person: p, keepGroup: sel ? sel.value : p.entries[0].group };
+  });
+
+  // 產生歸檔 Excel（在修改資料前先備份決策記錄）
+  const archiveRows = [
+    ['序號', '姓名', '法名', '學員編號', '重複出現組別', '確認保留組別', '處理方式'],
+  ];
+  decisions.forEach((d, i) => {
+    const p = d.person;
+    const groups = [...new Set(p.entries.map(e => e.group))].join('、');
+    const action = d.keepGroup === '__remove__' ? '全部移除' : `保留在「${d.keepGroup}」`;
+    archiveRows.push([i + 1, p.name, p.faming, p.id, groups, d.keepGroup === '__remove__' ? '（移除）' : d.keepGroup, action]);
+  });
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(archiveRows);
+
+  // 標題列粗體
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  for (let C = range.s.c; C <= range.e.c; C++) {
+    const cellAddr = XLSX.utils.encode_cell({ r: 0, c: C });
+    if (ws[cellAddr]) ws[cellAddr].s = { font: { bold: true }, fill: { fgColor: { rgb: 'FFD966' } } };
+  }
+  ws['!cols'] = [{ wch: 5 }, { wch: 8 }, { wch: 8 }, { wch: 12 }, { wch: 30 }, { wch: 12 }, { wch: 18 }];
+
+  XLSX.utils.book_append_sheet(wb, ws, '重複聘任歸組確認');
+  _triggerDownload(wb, '護法會_重複聘任歸組確認.xlsx');
+
+  // 依序執行每人的歸組決策
+  for (const d of decisions) {
+    const p = d.person;
+    const matchIds   = new Set(p.entries.map(e => e.member['學員編號']).filter(Boolean));
+    const matchNames = new Set(
+      p.entries.map(e => `${e.member['姓名']}_${e.member['法名']}`).filter(nk => nk && nk !== '_')
+    );
+
+    if (d.keepGroup === '__remove__') {
+      // 全部移除
+      groupNames.forEach(g => {
+        if (!thisYearDict[g]) return;
+        thisYearDict[g] = thisYearDict[g].filter(m => {
+          const eid = m['學員編號'];
+          const nk  = `${m['姓名']}_${m['法名']}`;
+          return !((eid && matchIds.has(eid)) || (nk && nk !== '_' && matchNames.has(nk)));
+        });
+      });
+    } else {
+      // 保留在指定組，其餘移除
+      groupNames.forEach(g => {
+        if (g === d.keepGroup || !thisYearDict[g]) return;
+        thisYearDict[g] = thisYearDict[g].filter(m => {
+          const eid = m['學員編號'];
+          const nk  = `${m['姓名']}_${m['法名']}`;
+          return !((eid && matchIds.has(eid)) || (nk && nk !== '_' && matchNames.has(nk)));
+        });
+      });
+    }
+  }
+
+  // 重新比對
+  const raw = compareVolunteers(lastYearList, thisYearDict);
+  compareRawResults = raw;
+  allResults  = {};
+  groupNames  = Object.keys(raw);
+  for (const g of groupNames) {
+    const mbs = raw[g]['今年成員'];
+    const cns = raw[g]['取消名單'];
+    allResults[g] = { summary: countStats(mbs, cns), members: mbs, cancelled: cns };
+  }
+  renderResults(false);
+  saveToLocalStorage();
+}
+
 // ── 編輯學員資料彈窗 ──────────────────────────────────────────
 let _editTarget = null;
 
@@ -1326,7 +1809,7 @@ function closeEditModal() {
 
 function savePersonEdit() {
   if (!_editTarget) return;
-  const m = _editTarget.member;
+  const { member: m, group } = _editTarget;
 
   for (const f of EDIT_FIELDS) {
     const el = document.getElementById(`edit-field-${f.key}`);
@@ -1334,6 +1817,17 @@ function savePersonEdit() {
   }
 
   closeEditModal();
+
+  // 今年職稱留空 → 視為取消，從今年名單移除
+  if (!m['今年職稱'] && thisYearDict[group]) {
+    const eid = m['學員編號'];
+    const nk  = `${m['姓名']}_${m['法名']}`;
+    thisYearDict[group] = thisYearDict[group].filter(x => {
+      if (eid && x['學員編號'] === eid) return false;
+      if (!eid && `${x['姓名']}_${x['法名']}` === nk) return false;
+      return true;
+    });
+  }
 
   // 重新比對（不捲頁）
   const raw = compareVolunteers(lastYearList, thisYearDict);
@@ -1346,6 +1840,7 @@ function savePersonEdit() {
     allResults[g] = { summary: countStats(mbs, cns), members: mbs, cancelled: cns };
   }
   renderResults(false);
+  saveToLocalStorage();
 }
 
 function confirmPersonId(inputId) {
@@ -1541,6 +2036,7 @@ async function doSupplement() {
     }
 
     renderResults(false);
+    saveToLocalStorage();
 
     // 重設上傳欄位
     document.getElementById('supp-file').value = '';
@@ -1601,6 +2097,171 @@ function doGlobalSearch() {
     <div class="tbl-wrap"><table>${thead}<tbody>${tbody}</tbody></table></div>
   `;
   container.style.display = 'block';
+}
+
+// ── localStorage 暫存 ─────────────────────────────────────────
+const LS_KEY = 'pg_volunteers_state';
+
+function saveToLocalStorage() {
+  try {
+    const payload = {
+      savedAt:     new Date().toISOString(),
+      lastYearList: lastYearList,
+      thisYearDict: thisYearDict,
+    };
+    localStorage.setItem(LS_KEY, JSON.stringify(payload));
+  } catch (e) {
+    console.warn('暫存失敗（localStorage 空間不足或不支援）', e);
+  }
+}
+
+function checkSavedState() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return;
+    const payload = JSON.parse(raw);
+    if (!payload?.savedAt || !payload?.lastYearList || !payload?.thisYearDict) return;
+
+    const d = new Date(payload.savedAt);
+    const fmt = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ` +
+                `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    const lastCount = payload.lastYearList.length;
+    const thisCount = Object.values(payload.thisYearDict).reduce((s, arr) => s + arr.length, 0);
+
+    document.getElementById('restore-msg').textContent =
+      `🗄️ 發現上次比對紀錄（${fmt}），去年 ${lastCount} 人、今年 ${thisCount} 筆。是否還原？`;
+    document.getElementById('restore-banner').style.display = 'flex';
+  } catch (e) {
+    console.warn('讀取暫存失敗', e);
+  }
+  renderArchivePanel();
+}
+
+function doRestore() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return;
+    const payload = JSON.parse(raw);
+    if (!payload?.lastYearList || !payload?.thisYearDict) return;
+
+    lastYearList = payload.lastYearList;
+    thisYearDict = payload.thisYearDict;
+
+    const rawResult = compareVolunteers(lastYearList, thisYearDict);
+    compareRawResults = rawResult;
+    allResults = {};
+    groupNames = Object.keys(rawResult);
+    for (const g of groupNames) {
+      const mbs = rawResult[g]['今年成員'];
+      const cns = rawResult[g]['取消名單'];
+      allResults[g] = { summary: countStats(mbs, cns), members: mbs, cancelled: cns };
+    }
+
+    document.getElementById('restore-banner').style.display = 'none';
+    renderResults();
+  } catch (e) {
+    alert('還原失敗：' + e.message);
+    console.error(e);
+  }
+}
+
+function doClearStorage() {
+  localStorage.removeItem(LS_KEY);
+  document.getElementById('restore-banner').style.display = 'none';
+}
+
+// ── 歷年存檔 ──────────────────────────────────────────────────
+const LS_ARCHIVE = 'pg_volunteers_archive';
+
+function loadArchive() {
+  try { return JSON.parse(localStorage.getItem(LS_ARCHIVE) || '{}'); }
+  catch { return {}; }
+}
+
+function renderArchivePanel() {
+  const archive = loadArchive();
+  const keys    = Object.keys(archive);
+  const el      = document.getElementById('archive-list');
+  if (!el) return;
+
+  if (keys.length === 0) {
+    el.innerHTML = '<div style="color:#aaa;font-size:.85rem">尚無存檔。執行比對後輸入名稱即可儲存。</div>';
+    return;
+  }
+
+  el.innerHTML = keys.map(name => {
+    const p         = archive[name];
+    const d         = new Date(p.savedAt);
+    const fmt       = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const lastCount = p.lastYearList?.length || 0;
+    const thisCount = Object.values(p.thisYearDict || {}).reduce((s, a) => s + a.length, 0);
+    const safeName  = name.replace(/'/g, "\\'");
+    return `<div class="archive-item">
+      <span class="archive-item-name">${esc(name)}</span>
+      <span class="archive-item-meta">${fmt}　去年 ${lastCount} 人 / 今年 ${thisCount} 筆</span>
+      <button class="restore-btn primary" onclick="doLoadArchive('${safeName}')">載入</button>
+      <button class="restore-btn secondary" onclick="doDeleteArchive('${safeName}')">刪除</button>
+    </div>`;
+  }).join('');
+}
+
+function doSaveArchive() {
+  if (!lastYearList || !thisYearDict) {
+    alert('請先執行比對再儲存'); return;
+  }
+  const input = document.getElementById('archive-name-input');
+  const name  = input.value.trim();
+  if (!name) { input.style.borderColor = '#ef4444'; input.focus(); return; }
+  input.style.borderColor = '';
+
+  const archive = loadArchive();
+  if (archive[name] && !confirm(`「${name}」已有存檔，確定覆蓋？`)) return;
+
+  archive[name] = {
+    savedAt:     new Date().toISOString(),
+    lastYearList,
+    thisYearDict,
+  };
+  try {
+    localStorage.setItem(LS_ARCHIVE, JSON.stringify(archive));
+    input.value = '';
+    renderArchivePanel();
+    // 短暫顯示成功提示
+    const btn = input.nextElementSibling;
+    const orig = btn.textContent;
+    btn.textContent = '✓ 已儲存';
+    setTimeout(() => { btn.textContent = orig; }, 1500);
+  } catch (e) {
+    alert('儲存失敗：localStorage 空間不足，請先刪除舊存檔。');
+  }
+}
+
+function doLoadArchive(name) {
+  const archive = loadArchive();
+  const payload = archive[name];
+  if (!payload) return;
+
+  lastYearList = payload.lastYearList;
+  thisYearDict = payload.thisYearDict;
+
+  const raw = compareVolunteers(lastYearList, thisYearDict);
+  compareRawResults = raw;
+  allResults  = {};
+  groupNames  = Object.keys(raw);
+  for (const g of groupNames) {
+    const mbs = raw[g]['今年成員'];
+    const cns = raw[g]['取消名單'];
+    allResults[g] = { summary: countStats(mbs, cns), members: mbs, cancelled: cns };
+  }
+  renderResults();
+}
+
+function doDeleteArchive(name) {
+  if (!confirm(`確定刪除「${name}」的存檔？`)) return;
+  const archive = loadArchive();
+  delete archive[name];
+  localStorage.setItem(LS_ARCHIVE, JSON.stringify(archive));
+  renderArchivePanel();
 }
 
 // ── 組內過濾 ──────────────────────────────────────────────────
@@ -1670,7 +2331,11 @@ function showGroup(idx) {
   }
 
   document.getElementById('group-detail').innerHTML = `
-    <div class="group-title">${esc(groupName)}　護法會名單</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:6px">
+      <div class="group-title" style="margin:0">${esc(groupName)}　護法會名單</div>
+      <button class="btn-download" style="font-size:.85rem;padding:6px 14px"
+              onclick="downloadGroupReport(${JSON.stringify(groupName)})">⬇ 下載本組名單</button>
+    </div>
     <div class="group-stats">
       正常 ${s.normal} 人　　新增 ${s.new} 人　　取消 ${s.cancel} 人　　異動 ${s.change} 人　　重複聘任 ${s.dup} 人　　本年合計 ${s.total} 人（不含重複聘任）
     </div>
@@ -1684,6 +2349,8 @@ function showGroup(idx) {
     </div>
   `;
 }
+
+window.addEventListener('DOMContentLoaded', checkSavedState);
 </script>
 </body>
 </html>
