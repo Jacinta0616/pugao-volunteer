@@ -1622,6 +1622,10 @@ function renderDupResolution() {
             ${options}
             <option value="__remove__">— 全部移除 —</option>
           </select>
+          <button onclick="confirmDupKeepGroup('${esc(p.key)}', document.getElementById('dup-sel-${idx}').value)"
+                  style="background:#16a34a;border:none;color:#fff;padding:5px 13px;
+                         border-radius:6px;cursor:pointer;font-size:.85rem;font-family:inherit;
+                         font-weight:700;white-space:nowrap">✓ 確認</button>
         </div>
       </div>
     `;
