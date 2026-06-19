@@ -373,7 +373,8 @@
   <div style="text-align:center;margin-bottom:20px">
     <span style="font-size:.85rem;color:#888;margin-right:8px">不確定格式？先下載模板：</span>
     <button class="btn-download" onclick="downloadLastYearTemplate()" style="margin:4px 6px">⬇ 去年資料模板</button>
-    <button class="btn-download" onclick="downloadThisYearTemplate()" style="margin:4px 6px">⬇ 今年資料模板</button>
+    <button class="btn-download" onclick="downloadThisYearTemplate()" style="margin:4px 6px">⬇ 今年資料模板（多組）</button>
+    <button class="btn-download" onclick="downloadThisYearFlatTemplate()" style="margin:4px 6px">⬇ 今年資料模板（單表）</button>
   </div>
 
   <!-- Upload -->
@@ -392,9 +393,11 @@
         <div class="icon">📂</div>
         <h3>今年護法會資料</h3>
         <span class="hint">點擊選擇 Excel 檔案</span>
+        <span class="hint" style="display:block;font-size:.72rem;opacity:.65;margin-top:2px">支援多組格式或去年單表格式</span>
       </label>
       <input type="file" id="this-file" accept=".xlsx,.xlsm,.xls" onchange="onFileChange('this')">
       <div class="filename" id="this-name"></div>
+      <div id="this-format-hint" style="font-size:.72rem;color:#666;margin-top:4px;text-align:center"></div>
     </div>
   </div>
 
@@ -551,9 +554,18 @@ function safeStr(val) {
 function parseGroupFromTitle(title) {
   const t = safeStr(title);
   if (!t) return ['核心組', ''];
+  // 第一優先：完整組別名稱（含「組」），如「福慧出坡組幹事」
   for (const group of SORTED_GROUPS) {
     if (t.startsWith(group)) return [group, t.slice(group.length).trim()];
   }
+  // 第二優先：省略「組」字的組別名稱，如「福慧出坡幹事」→「福慧出坡組」
+  for (const group of SORTED_GROUPS) {
+    const stem = group.endsWith('組') ? group.slice(0, -1) : '';
+    if (stem && t.startsWith(stem)) return [group, t.slice(stem.length).trim()];
+  }
+  // 第三優先：去年格式，職稱含「組」字可拆解，如「庭園組幹事」
+  const m = t.match(/^(.+?組)/);
+  if (m) return [m[1], t.slice(m[1].length).trim()];
   return ['核心組', t];
 }
 
@@ -761,14 +773,14 @@ function compareVolunteers(lastYearList, thisYearDict) {
         } else if (lastTitle !== m['今年職稱']) {
           status = '異動'; note = `職稱：${lastTitle} → ${m['今年職稱']}`;
         } else {
-          status = '正常'; note = '';
+          status = '續任（無異動）'; note = '';
         }
       }
 
       if (isDup) {
         const other   = [...new Set(allGroups)].filter(g => g !== group);
         const dupNote = `重複聘任組別：${other.join('、')}`;
-        if (status === '正常') { status = '重複聘任'; note = dupNote; }
+        if (status === '續任（無異動）') { status = '重複聘任'; note = dupNote; }
         else { status = `${status}、重複聘任`; note = note ? `${note}；${dupNote}` : dupNote; }
       }
 
@@ -810,7 +822,7 @@ function countStats(members, cancelled) {
     change: members.filter(m  => (m['狀態'] || '').includes('異動')).length
           + cancelled.filter(c => c['狀態'] === '異動').length,
     dup:    members.filter(m  => (m['狀態'] || '').includes('重複聘任')).length,
-    normal: members.filter(m  => m['狀態'] === '正常').length,
+    normal: members.filter(m  => m['狀態'] === '續任（無異動）').length,
   };
 }
 
@@ -866,7 +878,7 @@ function generateReport(rawResults) {
 
   const sumAoa = [
     ['普高精舍 護法會資料比對總覽', '', '', '', '', '', ''],
-    ['組別', '今年人數（不含重複聘任）', '正常', '新增', '取消', '異動', '重複聘任'],
+    ['組別', '今年人數（不含重複聘任）', '續任（無異動）', '新增', '取消', '異動', '重複聘任'],
   ];
   for (const g of gNames) {
     const { '今年成員': mb, '取消名單': cn } = rawResults[g];
@@ -902,7 +914,7 @@ function generateReport(rawResults) {
 
     const aoa = [
       [`${group}　護法會名單`, ...Array(9).fill('')],
-      [`正常 ${st.normal} 人　　新增 ${st.new} 人　　取消 ${st.cancel} 人　　異動 ${st.change} 人　　重複聘任 ${st.dup} 人　　本年合計 ${st.total} 人（不含重複聘任）`,
+      [`續任（無異動） ${st.normal} 人　　新增 ${st.new} 人　　取消 ${st.cancel} 人　　異動 ${st.change} 人　　重複聘任 ${st.dup} 人　　本年合計 ${st.total} 人（不含重複聘任）`,
        ...Array(9).fill('')],
       [...RCOLS],
     ];
@@ -1009,7 +1021,7 @@ function downloadGroupReport(groupName) {
 
   const aoa = [
     [`${groupName}　護法會名單`, ...Array(9).fill('')],
-    [`正常 ${st.normal} 人　　新增 ${st.new} 人　　取消 ${st.cancel} 人　　異動 ${st.change} 人　　重複聘任 ${st.dup} 人　　本年合計 ${st.total} 人（不含重複聘任）`,
+    [`續任（無異動） ${st.normal} 人　　新增 ${st.new} 人　　取消 ${st.cancel} 人　　異動 ${st.change} 人　　重複聘任 ${st.dup} 人　　本年合計 ${st.total} 人（不含重複聘任）`,
      ...Array(9).fill('')],
     [...RCOLS],
   ];
@@ -1192,6 +1204,11 @@ async function doCompare() {
     const thisWb = XLSX.read(thisBuf, { type: 'array' });
     lastYearList = loadLastYear(lastWb);
     thisYearDict = loadThisYear(thisWb);
+    const _fmtSheets = thisWb.SheetNames.filter(s => KNOWN_GROUPS.includes(s));
+    const _fmtEl = document.getElementById('this-format-hint');
+    if (_fmtEl) _fmtEl.textContent = _fmtSheets.length >= 2
+      ? `偵測格式：多組工作表（${_fmtSheets.length} 組）`
+      : '偵測格式：單表格式（去年同格式）';
     const raw    = compareVolunteers(lastYearList, thisYearDict);
 
     compareRawResults = raw;
@@ -1347,6 +1364,51 @@ function downloadThisYearTemplate() {
   _triggerDownload(wb, '今年護法會資料_模板.xlsx');
 }
 
+function downloadThisYearFlatTemplate() {
+  const wb = XLSX.utils.book_new();
+
+  const cols      = ['學員編號', '姓名', '法名', '年齡', '行動電話', '115護法會職稱'];
+  const colWidths = [14, 10, 8, 6, 16, 20].map(w => ({ wch: w }));
+
+  const sampleRows = [
+    ['10001', '張大明', '傳明', '35', '0912-345-678', '音響組音響師'],
+    ['10002', '李志偉', '',     '42', '0923-456-789', '音響組音響助理'],
+    ['',      '陳淑芬', '傳慧', '28', '0934-567-890', '香積組香積員'],
+    ['10005', '王小華', '傳正', '50', '0945-678-901', '交通組司機'],
+  ];
+
+  const ws = XLSX.utils.aoa_to_sheet([cols, ...sampleRows]);
+  ws['!cols'] = colWidths;
+  _styleHeaderRow(ws, cols.length);
+  XLSX.utils.book_append_sheet(wb, ws, '護法會名單');
+
+  const instrAoa = [
+    ['【今年護法會資料 填寫說明（單表格式）】', '', ''],
+    [],
+    ['欄位', '必填', '說明'],
+    ['學員編號', '否', '有填比對更準確，空白也可以'],
+    ['姓名',     '是', '護法會姓名'],
+    ['法名',     '否', '法名（沒有可空白）'],
+    ['年齡',     '否', '年齡'],
+    ['行動電話', '否', '手機號碼'],
+    ['115護法會職稱', '是', '組別名稱＋職稱，例如「音響組音響師」、「香積組香積員」'],
+    [],
+    ['使用說明', '', ''],
+    ['• 所有組別成員放在同一張工作表（和去年格式相同）', '', ''],
+    ['• 職稱欄名稱可用「護法會職稱」、「115護法會職稱」或「本組職稱」', '', ''],
+    ['• 職稱值需包含組別前綴，例如「音響組音響師」（不是只寫「音響師」）', '', ''],
+  ];
+  const wsI = XLSX.utils.aoa_to_sheet(instrAoa);
+  wsI['!cols'] = [22, 6, 52].map(w => ({ wch: w }));
+  wsI['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 2 } },
+    { s: { r: 10, c: 0 }, e: { r: 10, c: 2 } },
+  ];
+  XLSX.utils.book_append_sheet(wb, wsI, '填寫說明');
+
+  _triggerDownload(wb, '今年護法會資料_模板_單表格式.xlsx');
+}
+
 function renderResults(doScroll = true) {
   let totNew = 0, totCancel = 0, totChange = 0, totDup = 0, totTotal = 0, totNormal = 0;
   groupNames.forEach(g => {
@@ -1378,7 +1440,7 @@ function renderResults(doScroll = true) {
     <thead><tr>
       <th style="text-align:left">組別</th>
       <th>今年人數<br><span style="font-weight:400;font-size:.78rem;color:#666">（不含重複聘任）</span></th>
-      <th>正常</th><th>新增</th><th>取消</th><th>異動</th><th>重複聘任</th>
+      <th>續任（無異動）</th><th>新增</th><th>取消</th><th>異動</th><th>重複聘任</th>
     </tr></thead>
     <tbody>
       ${bodyRows}
@@ -2362,7 +2424,7 @@ function showGroup(idx) {
               onclick="downloadGroupReport(${JSON.stringify(groupName)})">⬇ 下載本組名單</button>
     </div>
     <div class="group-stats">
-      正常 ${s.normal} 人　　新增 ${s.new} 人　　取消 ${s.cancel} 人　　異動 ${s.change} 人　　重複聘任 ${s.dup} 人　　本年合計 ${s.total} 人（不含重複聘任）
+      續任（無異動） ${s.normal} 人　　新增 ${s.new} 人　　取消 ${s.cancel} 人　　異動 ${s.change} 人　　重複聘任 ${s.dup} 人　　本年合計 ${s.total} 人（不含重複聘任）
     </div>
     <div style="margin-bottom:10px">
       <input type="text" class="search-input" id="group-search"
