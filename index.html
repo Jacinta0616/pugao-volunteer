@@ -819,7 +819,7 @@ function countStats(members, cancelled) {
     total:  members.filter(m => !(m['狀態'] || '').includes('重複聘任')).length,
     new:    members.filter(m  => (m['狀態'] || '').includes('新增')).length,
     cancel: cancelled.filter(c => c['狀態'] === '取消').length,
-    change: members.filter(m  => (m['狀態'] || '').includes('異動')).length
+    change: members.filter(m  => { const s = m['狀態'] || ''; return s.includes('異動') && !s.includes('續任'); }).length
           + cancelled.filter(c => c['狀態'] === '異動').length,
     dup:    members.filter(m  => (m['狀態'] || '').includes('重複聘任')).length,
     normal: members.filter(m  => m['狀態'] === '續任（無異動）').length,
@@ -849,6 +849,7 @@ function generateReport(rawResults) {
 
   function statusStyle(status) {
     if (!status) return S.normal;
+    if (status.includes('續任'))     return S.normal;
     if (status.includes('重複聘任')) return S.dup;
     if (status.includes('新增'))     return S.new;
     if (status.includes('取消'))     return S.cancel;
@@ -998,6 +999,7 @@ function downloadGroupReport(groupName) {
   };
   function statusStyle(status) {
     if (!status) return S.normal;
+    if (status.includes('續任'))     return S.normal;
     if (status.includes('重複聘任')) return S.dup;
     if (status.includes('新增'))     return S.new;
     if (status.includes('取消'))     return S.cancel;
@@ -1161,6 +1163,7 @@ function esc(s) {
 
 function rowClass(status) {
   if (!status) return '';
+  if (status.includes('續任'))     return '';
   if (status.includes('新增'))     return 'row-new';
   if (status.includes('重複聘任')) return 'row-dup';
   if (status.includes('取消'))     return 'row-cancel';
@@ -1486,13 +1489,13 @@ function showStatusList(type) {
     allResults[g].members.forEach(m => {
       const s = m['狀態'] || '';
       if ((type === 'new'    && s.includes('新增')) ||
-          (type === 'change' && s.includes('異動')) ||
+          (type === 'change' && s.includes('異動') && !s.includes('續任')) ||
           (type === 'dup'    && s.includes('重複聘任'))) rows.push({ group: g, ...m });
     });
     allResults[g].cancelled.forEach(c => {
       const s = c['狀態'] || '';
       if ((type === 'cancel' && s.includes('取消')) ||
-          (type === 'change' && s.includes('異動'))) rows.push({ group: g, ...c });
+          (type === 'change' && s.includes('異動') && !s.includes('續任'))) rows.push({ group: g, ...c });
     });
   });
 
